@@ -9,6 +9,17 @@ if ! command -v kubeseal &> /dev/null; then
     exit 1
 fi
 
+# -----------------------------------------------------------
+# 📁 対象ディレクトリの設定
+# 引数($1)があればそれを使い、なければカレントディレクトリ(.)を使う
+# -----------------------------------------------------------
+TARGET_DIR="${1:-.}"
+
+if [ ! -d "$TARGET_DIR" ]; then
+    echo "❌ Error: Directory '$TARGET_DIR' does not exist."
+    exit 1
+fi
+
 # ==========================================
 # 🚫 除外したいフォルダのリスト (設定エリア)
 # ==========================================
@@ -33,7 +44,7 @@ echo "   (Ignoring: ${IGNORE_DIRS[*]})"
 
 # findコマンドの除外引数を動的に構築する
 # 結果として: \( -name ".git" -o -name "node_modules" ... \) -prune -o という形を作る
-FIND_CMD=(find .)
+FIND_CMD=(find "$TARGET_DIR")
 
 # 1. 除外リストの構築開始
 FIND_CMD+=( \( )
@@ -70,7 +81,7 @@ FIND_CMD+=( -print0 )
     fi
 
     echo "🔒 Encrypting: $input_file -> $output_file"
-    
+
     # kubeseal 実行
     kubeseal --format=yaml < "$input_file" > "$output_file"
 

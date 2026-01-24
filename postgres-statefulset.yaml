@@ -1,17 +1,16 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   labels:
     service: postgres-n8n
   name: postgres
   namespace: n8n
 spec:
+  serviceName: "postgres-service"
   replicas: 1
   selector:
     matchLabels:
       service: postgres-n8n
-  strategy:
-    type: Recreate
   template:
     metadata:
       labels:
@@ -22,13 +21,14 @@ spec:
           image: postgres:18.1
           resources:
             limits:
-              memory: "4Gi"
-              cpu: "4"
-            requests:
-              cpu: "2"
               memory: "2Gi"
+              cpu: "2000m"
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
           ports:
             - containerPort: 5432
+              name: postgres
           livenessProbe:
             exec:
               command:
@@ -48,7 +48,7 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
           volumeMounts:
-            - name: postgresql-pv
+            - name: postgresql-data
               mountPath: /var/lib/postgresql/data
             - name: init-data
               mountPath: /docker-entrypoint-initdb.d/init-n8n-user.sh
@@ -68,7 +68,6 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: n8n
-            # init-data.sh で使用するカスタム変数
             - name: POSTGRES_NON_ROOT_USER
               valueFrom:
                 secretKeyRef:
@@ -79,23 +78,21 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: POSTGRES_NON_ROOT_PASSWORD
-            - name: POSTGRES_HOST
-              value: postgres-service
-            - name: POSTGRES_PORT
-              value: "5432"
             - name: GENERIC_TIMEZONE
               value: Asia/Tokyo
             - name: TZ
               value: Asia/Tokyo
       restartPolicy: Always
       volumes:
-        - name: postgresql-pv
-          persistentVolumeClaim:
-            claimName: postgresql-pv
-        - name: postgres-secret
-          secret:
-            secretName: postgres-secret
         - name: init-data
           configMap:
             name: init-data
             defaultMode: 0744
+  volumeClaimTemplates:
+    - metadata:
+        name: postgresql-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi

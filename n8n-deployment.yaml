@@ -19,19 +19,25 @@ spec:
     spec:
       initContainers:
         - name: wait-for-postgres
-          image: busybox:1.37.0
+          image: postgres:18.1-alpine
           command: 
             - sh
             - -c
             - |
               echo "Waiting for PostgreSQL..."
-              # nc -z <HOST> <PORT> returns 0 if the port is open
-              until nc -z -v -w 2 postgres-service.n8n.svc.cluster.local 5432; do
+              # Wait
+              until pg_isready -h postgres-service.n8n.svc.cluster.local -p 5432 -U "$DB_USER"; do
                 echo "Waiting for database connection..."
                 sleep 2
               done
               echo "PostgreSQL is ready!"
-        - name: columen-permissions
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+        - name: volume-permissions
           image: busybox:1.37.0
           command: ["sh", "-c", "chown -R 1000:1000 /home/node/.n8n"]
           volumeMounts:
@@ -71,6 +77,16 @@ spec:
                 secretKeyRef:
                   name: n8n-secret
                   key: N8N_ENCRYPTION_KEY
+            - name: WEBHOOK_URL
+              value: http://my-home-n8n.local:30078/
+            - name: N8N_HOST
+              value: my-home-n8n.local
+            - name: EXECUTIONS_DATA_PRUNE
+              value: "true" # Enable automatic pruning of execution data
+            - name: EXECUTIONS_DATA_MAX_AGE
+              value: "168" # 7 days
+            - name: EXECUTIONS_DATA_PRUNE_MAX_COUNT
+              value: "50000" # Max 50,000 executions
             - name: GENERIC_TIMEZONE
               value: Asia/Tokyo
             - name: TZ

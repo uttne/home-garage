@@ -6,12 +6,45 @@ metadata:
 data:
   init-data.sh: |
     #!/bin/bash
-    set -e;
+    set -e
+    
+    echo "====================================================="
+    echo "START: init-data.sh execution"
+    echo "User: $(whoami)"
+    echo "Date: $(date)"
+    echo "====================================================="
+
+    # 変数のチェックとログ出力（パスワードは表示しない）
+    if [ -z "${POSTGRES_NON_ROOT_USER:-}" ]; then
+      echo "❌ Error: POSTGRES_NON_ROOT_USER is not set."
+    else
+      echo "✅ POSTGRES_NON_ROOT_USER is set to: '${POSTGRES_NON_ROOT_USER}'"
+    fi
+
+    if [ -z "${POSTGRES_NON_ROOT_PASSWORD:-}" ]; then
+      echo "❌ Error: POSTGRES_NON_ROOT_PASSWORD is not set."
+    else
+      echo "✅ POSTGRES_NON_ROOT_PASSWORD is set (hidden)."
+    fi
+
+    # ユーザー作成処理
     if [ -n "${POSTGRES_NON_ROOT_USER:-}" ] && [ -n "${POSTGRES_NON_ROOT_PASSWORD:-}" ]; then
+      echo "🚀 Attempting to create user and grant privileges..."
+      
       psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+        -- ユーザーが存在しない場合のみ作成するなどの分岐はSQL側で複雑になるため
+        -- エラーが出てもログでわかるようにそのまま実行します
         CREATE USER "${POSTGRES_NON_ROOT_USER}" WITH PASSWORD '${POSTGRES_NON_ROOT_PASSWORD}';
         GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO "${POSTGRES_NON_ROOT_USER}";
-      EOSQL
+        -- 権限確認のためスキーマ権限も念の為
+        GRANT ALL ON SCHEMA public TO "${POSTGRES_NON_ROOT_USER}";
+    EOSQL
+      
+      echo "✅ SQL commands executed successfully."
     else
-      echo "SETUP INFO: No Environment variables given!"
+      echo "⚠️ Skipping user creation due to missing variables."
     fi
+
+    echo "====================================================="
+    echo "END: init-data.sh execution"
+    echo "====================================================="

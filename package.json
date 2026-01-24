@@ -1,0 +1,9 @@
+{
+  "packageManager": "pnpm@10.28.1",
+  "devDependencies": {
+    "repomix": "^1.11.1"
+  },
+  "scripts": {
+    "repomix": "repomix"
+  }
+}

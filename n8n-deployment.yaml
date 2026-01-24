@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: n8n
+  name: n8n
+  namespace: n8n
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: n8n
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        service: n8n
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.37.0
+          command: 
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL..."
+              # nc -z <HOST> <PORT> returns 0 if the port is open
+              until nc -z -v -w 2 postgres-service.n8n.svc.cluster.local 5432; do
+                echo "Waiting for database connection..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+        - name: columen-permissions
+          image: busybox:1.37.0
+          command: ["sh", "-c", "chown -R 1000:1000 /home/node/.n8n"]
+          volumeMounts:
+            - name: n8n-claim0
+              mountPath: /home/node/.n8n
+      containers:
+        - command:
+            - /bin/sh
+          args:
+            - -c
+            - n8n start
+          env:
+            - name: DB_TYPE
+              value: postgresdb
+            - name: DB_POSTGRESDB_HOST
+              value: postgres-service.n8n.svc.cluster.local
+            - name: DB_POSTGRESDB_PORT
+              value: "5432"
+            - name: DB_POSTGRESDB_DATABASE
+              value: n8n
+            - name: DB_POSTGRESDB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_USER
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_PASSWORD
+            - name: N8N_PROTOCOL
+              value: http
+            - name: N8N_PORT
+              value: "5678"
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secret
+                  key: N8N_ENCRYPTION_KEY
+            - name: GENERIC_TIMEZONE
+              value: Asia/Tokyo
+            - name: TZ
+              value: Asia/Tokyo
+          image: n8nio/n8n:2.4.6
+          name: n8n
+          ports:
+            - containerPort: 5678
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - mountPath: /home/node/.n8n
+              name: n8n-claim0
+      restartPolicy: Always
+      volumes:
+        - name: n8n-claim0
+          persistentVolumeClaim:
+            claimName: n8n-claim0
+        - name: n8n-secret
+          secret:
+            secretName: n8n-secret
+        - name: postgres-secret
+          secret:
+            secretName: postgres-secret

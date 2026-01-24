@@ -1,0 +1,14 @@
+[Unit]
+Description=Publish Avahi Aliases from Config
+After=network.target avahi-daemon.service
+Wants=avahi-daemon.service
+
+[Service]
+Type=simple
+# 作成した汎用スクリプトを指定
+ExecStart=/usr/local/bin/avahi-publish-aliases.sh
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

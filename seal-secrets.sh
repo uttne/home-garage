@@ -61,8 +61,16 @@ FIND_CMD+=( -print0 )
     # 出力ファイル名を作成 (.yaml -> .sealed.yaml)
     output_file="${input_file%.yaml}.sealed.yaml"
 
-    echo "🔒 Encrypting: $input_file -> $output_file"
+    # 1. 出力ファイルが既に存在し、かつ
+    # 2. 入力ファイル(template)が出力ファイル(sealed)よりも「古ければ」(= 変更がなければ)
+    # スキップする
+    if [ -f "$output_file" ] && [ "$input_file" -ot "$output_file" ]; then
+        echo "⏭️  Skipping: $input_file (No changes detected)"
+        continue
+    fi
 
+    echo "🔒 Encrypting: $input_file -> $output_file"
+    
     # kubeseal 実行
     kubeseal --format=yaml < "$input_file" > "$output_file"
 

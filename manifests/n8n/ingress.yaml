@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: n8n-ingress
+  namespace: n8n
+  annotations:
+    # HTTP でのアクセスを HTTPS にリダイレクト
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+spec:
+  # k3s 標準のTraefik Ingress Controllerを使用する場合の設定例
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - my-home-n8n.local
+      secretName: n8n-tls-secret
+  rules:
+    - host: my-home-n8n.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: n8n
+                port:
+                  number: 5678

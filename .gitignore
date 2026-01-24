@@ -20,6 +20,9 @@
 # -----------------------------------------------------------
 repomix-output.xml
 
+# tmp files
+.tmp/
+
 # Logs
 logs
 *.log

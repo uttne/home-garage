@@ -78,7 +78,7 @@ spec:
                   name: n8n-secret
                   key: N8N_ENCRYPTION_KEY
             - name: WEBHOOK_URL
-              value: http://my-home-n8n.local:30078/
+              value: https://my-home-n8n.local/
             - name: N8N_HOST
               value: my-home-n8n.local
             - name: EXECUTIONS_DATA_PRUNE

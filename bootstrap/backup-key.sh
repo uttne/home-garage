@@ -10,10 +10,13 @@ if [ -z "$OUTPUT_FILE" ]; then
     echo "Usage: $0 <output-file-path>"
     exit 1
 fi
+# クラスタ内に Sealed Secrets のキーがあるか確認
+# -o name で名前だけ取得し、文字列が空でないか (-n) をチェックする
+SECRET_NAMES=$(kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key -o name 2>/dev/null)
 
 # クラスタ内に Sealed Secrets のキーがあるか確認
 # 存在確認だけなので標準出力は捨てる
-if kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key >/dev/null 2>&1; then
+if [ -n "$SECRET_NAMES" ]; then
 
     # 鍵が見つかった場合: 出力先に書き出す
     kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml >"$OUTPUT_FILE"

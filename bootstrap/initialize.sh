@@ -32,9 +32,13 @@ if [ -f "$BACKUP_KEY_FILE" ]; then
     exit 1
 fi
 
-# Check B: クラスタ内にすでに鍵があるか (★ここを追加)
+# Check B: クラスタ内にすでに鍵があるか
+# -o name で名前だけ取得し、文字列が空でないか (-n) をチェックする
+SECRET_NAMES=$(kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key -o name 2>/dev/null || true)
+
+# クラスタ内に Sealed Secrets のキーがあるか確認
 echo "🔎 Checking cluster for existing Sealed Secrets keys..."
-if kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key >/dev/null 2>&1; then
+if [ "$SECRET_NAMES" ]; then
     echo "⚠️  WARNING: A master key ALREADY EXISTS in the cluster!"
     echo "   Initializing now would overwrite/ignore the existing key, making current secrets undecryptable."
     echo "   If you want to recover using the cluster's key, use './bootstrap/setup.sh'."
@@ -92,7 +96,7 @@ echo ""
 # ==========================================
 echo "=== 4. Backing up the NEWLY GENERATED Master Key ==="
 mkdir -p "$BACKUP_DIR"
-chmod +x "$BACKUP_SCRIPT"
+chmod +x "$BACKUP_SCRIPT" "$SCRIPT_CLEAN" "$SCRIPT_SEAL"
 
 if "$BACKUP_SCRIPT" "$BACKUP_KEY_FILE"; then
     echo "🎉 New master key backed up to: $BACKUP_KEY_FILE"

@@ -1,0 +1,12 @@
+argo-cd:
+  server:
+    extraArgs:
+      - --insecure # Ingressで TLS終端しているのでArgoCDサーバーはHTTPで良い
+    ingress:
+      enabled: true
+      hosts:
+        - argocd.home-garage.local
+      ingressClassName: nginx
+  configs:
+    params:
+      server.insecure: true # ArgoCDサーバーをHTTPで動かす

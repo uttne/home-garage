@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io # 親を消したら子も消す
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/uttne/home-garage.git
+    targetRevision: HEAD
+    path: system/argocd
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true    # Gitにないものは削除する
+      selfHeal: true # 勝手に変更されたら直す
+    syncOptions:
+      - CreateNamespace=true # ArgoCDのApplicationでNamespaceを作成できるようにする

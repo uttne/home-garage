@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sealed-secrets
+  namespace: argocd
+  annotations:
+    # ★重要: 他のアプリより先にインストールさせるための優先順位
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # Sealed Secrets 公式 Helm チャートリポジトリ
+    repoURL: https://bitnami-labs.github.io/sealed-secrets
+    chart: sealed-secrets
+    # バージョンは固定推奨 (適宜最新を確認してください)
+    targetRevision: 2.18.0
+    helm:
+      # Helm の values 設定
+      parameters:
+        # コントローラー名を固定 (scriptで指定しやすくするため)
+        - name: fullnameOverride
+          value: sealed-secrets-controller
+        # ★重要: キーローテーションを無効化 (0 = 無効)
+        # これにより、30日ごとに鍵が変わるのを防ぎ、バックアップ管理を楽にします
+        - name: keyrenewperiod
+          value: "0"
+  destination:
+    server: https://kubernetes.default.svc
+    # インストール先 Namespace
+    namespace: sealed-secrets
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # Namespace がない場合は自動作成
+      - CreateNamespace=true

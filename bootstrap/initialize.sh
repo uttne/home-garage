@@ -9,7 +9,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 BACKUP_DIR="$REPO_ROOT/.secrets"
 BACKUP_KEY_FILE="$BACKUP_DIR/master-key-backup.yaml"
 BACKUP_SCRIPT="$SCRIPT_DIR/backup-key.sh"
-SEALED_SECRETS_APP_MANIFEST="$REPO_ROOT/system/sealed-secrets.yaml"
+SEALED_SECRETS_APP_MANIFEST="$REPO_ROOT/system/sealed-sct.yaml"
 
 # ヘルパースクリプト定義
 SCRIPT_CLEAN="$REPO_ROOT/scripts/clean-sealed.sh"

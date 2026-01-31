@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io # 親を消したら子も消す
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/uttne/home-garage.git
+    targetRevision: HEAD
+    path: system
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true    # Gitにないものは削除する
+      selfHeal: true # 勝手に変更されたら直す

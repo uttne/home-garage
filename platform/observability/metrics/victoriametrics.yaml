@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: victoria-metrics-k8s-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://victoriametrics.github.io/helm-charts
+    chart: victoria-metrics-k8s-stack
+    targetRevision: 0.72.4
+    helm:
+      releaseName: victoria-metrics-k8s-stack
+      valuesObject:
+        grafana:
+          enabled: false
+        alertmanager:
+          enabled: false
+        vmalert:
+          enabled: false
+        vmagent:
+          spec:
+            externalLabels:
+              cluster: home-garage
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: home-garage-observability
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: victoria-metrics-k8s-stack-victoria-metrics-operator-validation
+      namespace: home-garage-observability
+      jsonPointers:
+        - /data
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: victoria-metrics-k8s-stack-victoria-metrics-operator-admission
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Replace=true

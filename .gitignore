@@ -8,13 +8,19 @@
 #    (これで n8n-secret.yaml などの平文ファイルが除外されます)
 *secret*
 
-# 2. ただし、テンプレートファイル (*.template.yaml) は許可する
+# 2. ただし、External Secrets / SecretStore 系の manifest は Git 管理する
+!**/*externalsecret*.yaml
+!**/external-secrets-operator.yaml
+!**/cluster-secret-store.yaml
+!**/cluster-secret-store*.example
+
+# 3. テンプレートファイル (*.template.yaml) は許可する
 !*.template.yaml
 
-# 3. 暗号化済みファイル (*.sealed.yaml) も許可する
+# 4. 暗号化済みファイル (*.sealed.yaml) も許可する
 !*.sealed.yaml
 
-# 4. 特定のスクリプトファイルは許可する
+# 5. 特定のスクリプトファイルは許可する
 !seal-secrets.sh
 
 # -----------------------------------------------------------

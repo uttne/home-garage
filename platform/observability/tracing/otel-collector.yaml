@@ -1,0 +1,69 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-collector
+    targetRevision: 0.146.1
+    helm:
+      releaseName: otel-collector
+      valuesObject:
+        mode: deployment
+        image:
+          repository: otel/opentelemetry-collector-k8s
+        config:
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
+                http:
+                  endpoint: 0.0.0.0:4318
+          processors:
+            memory_limiter:
+              check_interval: 1s
+              limit_mib: 512
+            batch: {}
+          exporters:
+            otlp:
+              endpoint: tempo.home-garage-observability.svc.cluster.local:4317
+              tls:
+                insecure: true
+          service:
+            pipelines:
+              traces:
+                receivers:
+                  - otlp
+                processors:
+                  - memory_limiter
+                  - batch
+                exporters:
+                  - otlp
+        ports:
+          otlp:
+            enabled: true
+            containerPort: 4317
+            servicePort: 4317
+            protocol: TCP
+          otlp-http:
+            enabled: true
+            containerPort: 4318
+            servicePort: 4318
+            protocol: TCP
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: home-garage-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

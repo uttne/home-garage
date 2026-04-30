@@ -1,0 +1,79 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    targetRevision: 10.5.15
+    helm:
+      releaseName: grafana
+      valuesObject:
+        initChownData:
+          enabled: false
+        persistence:
+          enabled: true
+          size: 5Gi
+        service:
+          type: ClusterIP
+        ingress:
+          enabled: true
+          ingressClassName: traefik
+          hosts:
+            - grafana.home-garage.local
+        sidecar:
+          dashboards:
+            enabled: true
+            label: grafana_dashboard
+            searchNamespace: ALL
+        datasources:
+          datasources.yaml:
+            apiVersion: 1
+            datasources:
+              - name: VictoriaMetrics
+                uid: victoriametrics
+                type: prometheus
+                access: proxy
+                url: http://victoria-metrics-k8s-stack-vmselect.home-garage-observability.svc.cluster.local:8481/select/0/prometheus
+                isDefault: true
+              - name: Loki
+                uid: loki
+                type: loki
+                access: proxy
+                url: http://loki.home-garage-observability.svc.cluster.local:3100
+                jsonData:
+                  derivedFields:
+                    - name: TraceID
+                      matcherRegex: '"trace_id":"([A-Fa-f0-9]+)"'
+                      datasourceUid: tempo
+                      url: '${__value.raw}'
+              - name: Tempo
+                uid: tempo
+                type: tempo
+                access: proxy
+                url: http://tempo.home-garage-observability.svc.cluster.local:3100
+                jsonData:
+                  nodeGraph:
+                    enabled: true
+                  serviceMap:
+                    datasourceUid: victoriametrics
+                  tracesToLogsV2:
+                    datasourceUid: loki
+                    spanStartTimeShift: '-5m'
+                    spanEndTimeShift: '5m'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: home-garage-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

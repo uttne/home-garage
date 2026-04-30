@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istiod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: istiod
+    targetRevision: 1.29.0
+    helm:
+      releaseName: istiod
+      valuesObject:
+        meshConfig:
+          accessLogFile: /dev/stdout
+          accessLogEncoding: JSON
+          accessLogFormat: |
+            {"authority":"%REQ(:AUTHORITY)%","bytes_received":"%BYTES_RECEIVED%","bytes_sent":"%BYTES_SENT%","method":"%REQ(:METHOD)%","path":"%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%","protocol":"%PROTOCOL%","request_id":"%REQ(X-REQUEST-ID)%","response_code":"%RESPONSE_CODE%","response_flags":"%RESPONSE_FLAGS%","start_time":"%START_TIME%","trace_id":"%REQ(X-B3-Traceid)%","upstream_cluster":"%UPSTREAM_CLUSTER_RAW%","upstream_host":"%UPSTREAM_HOST%","upstream_service_time":"%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%","user_agent":"%REQ(USER-AGENT)%","x_forwarded_for":"%REQ(X-FORWARDED-FOR)%"}
+          extensionProviders:
+            - name: otel-tracing
+              opentelemetry:
+                service: otel-collector.home-garage-observability.svc.cluster.local
+                port: 4317
+          defaultProviders:
+            tracing:
+              - otel-tracing
+          defaultConfig:
+            tracing:
+              sampling: 100.0
+        pilot:
+          traceSampling: 100.0
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: istio-validator-istio-system
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+        - .webhooks[]?.failurePolicy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

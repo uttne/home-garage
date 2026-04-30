@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: n8n
+  labels:
+    service: postgres-n8n
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      service: postgres-n8n
+  template:
+    metadata:
+      labels:
+        service: postgres-n8n
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18.1
+          resources:
+            limits:
+              memory: 2Gi
+              cpu: 2000m
+            requests:
+              cpu: 500m
+              memory: 512Mi
+          ports:
+            - containerPort: 5432
+              name: postgres
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $POSTGRES_USER
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $POSTGRES_USER
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: n8n
+            - name: POSTGRES_NON_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_USER
+            - name: POSTGRES_NON_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_PASSWORD
+            - name: GENERIC_TIMEZONE
+              value: Asia/Tokyo
+            - name: TZ
+              value: Asia/Tokyo
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/bash
+                  - /docker-entrypoint-initdb.d/init-n8n-user.sh
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-data
+              mountPath: /docker-entrypoint-initdb.d/init-n8n-user.sh
+              subPath: init-data.sh
+      restartPolicy: Always
+      volumes:
+        - name: init-data
+          configMap:
+            name: init-data
+            defaultMode: 0744
+  volumeClaimTemplates:
+    - metadata:
+        name: postgresql-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi

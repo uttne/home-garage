@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: init-data
+  namespace: n8n
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+data:
+  init-data.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    if [ -z "${POSTGRES_NON_ROOT_USER:-}" ] || [ -z "${POSTGRES_NON_ROOT_PASSWORD:-}" ]; then
+      echo "❌ Error: POSTGRES_NON_ROOT_USER or POSTGRES_NON_ROOT_PASSWORD is not set."
+      exit 1
+    fi
+
+    until pg_isready -U "$POSTGRES_USER" -d postgres >/dev/null 2>&1; do
+      echo "Waiting for PostgreSQL to accept connections..."
+      sleep 2
+    done
+
+    psql \
+      -v ON_ERROR_STOP=1 \
+      --username "$POSTGRES_USER" \
+      --dbname postgres \
+      --set app_user="$POSTGRES_NON_ROOT_USER" \
+      --set app_password="$POSTGRES_NON_ROOT_PASSWORD" \
+      --set app_db="$POSTGRES_DB" <<'EOSQL'
+      SELECT format('CREATE USER %I WITH PASSWORD %L', :'app_user', :'app_password')
+      WHERE NOT EXISTS (
+        SELECT FROM pg_catalog.pg_roles WHERE rolname = :'app_user'
+      ) \gexec
+      SELECT format('ALTER USER %I WITH PASSWORD %L', :'app_user', :'app_password') \gexec
+      SELECT format('CREATE DATABASE %I OWNER %I', :'app_db', :'app_user')
+      WHERE NOT EXISTS (
+        SELECT FROM pg_database WHERE datname = :'app_db'
+      ) \gexec
+      SELECT format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'app_db', :'app_user') \gexec
+    EOSQL
+
+    psql \
+      -v ON_ERROR_STOP=1 \
+      --username "$POSTGRES_USER" \
+      --dbname "$POSTGRES_DB" \
+      --set app_user="$POSTGRES_NON_ROOT_USER" <<'EOSQL'
+      SELECT format('GRANT ALL ON SCHEMA public TO %I', :'app_user') \gexec
+      SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO %I', :'app_user') \gexec
+      SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO %I', :'app_user') \gexec
+    EOSQL

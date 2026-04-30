@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    targetRevision: 9.3.7
+    helm:
+      releaseName: argocd
+      valuesObject:
+        configs:
+          params:
+            server.insecure: true
+          cm:
+            resource.customizations.health.networking.k8s.io_Ingress: |
+              hs = {}
+              if obj.status ~= nil and obj.status.loadBalancer ~= nil and obj.status.loadBalancer.ingress ~= nil and #obj.status.loadBalancer.ingress > 0 then
+                hs.status = "Healthy"
+                hs.message = "Ingress has an assigned address"
+                return hs
+              end
+              if obj.spec ~= nil and obj.spec.rules ~= nil and #obj.spec.rules > 0 then
+                hs.status = "Healthy"
+                hs.message = "Ingress rules are configured"
+                return hs
+              end
+              hs.status = "Progressing"
+              hs.message = "Waiting for ingress status"
+              return hs
+        server:
+          extraArgs:
+            - --insecure
+          service:
+            type: ClusterIP
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            hosts:
+              - argocd.home-garage.local
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

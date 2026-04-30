@@ -1,47 +1,38 @@
-# home-garage 🔧
+# home-garage
 
-自宅の で使用するサービスを管理するためのレポジトリです。
-ArgoCD を中心に、管理ツール群（Prometheus, Grafana 等）や自作アプリケーションのデプロイメントを定義しています。
+家庭内アプリケーションを載せるための GitOps ベース Kubernetes 基盤リポジトリです。  
+ArgoCD を入口として、External Secrets Operator、Istio、VictoriaMetrics、Grafana、Loki、Fluent Bit、Tempo、OpenTelemetry Collector、そしてアプリケーション群を段階的に同期します。
 
-## 🚀 Bootstrap (セットアップ)
+## ドキュメント案内
 
-このリポジトリを新しい Kubernetes クラスターに適用し、GitOps の同期を開始する手順です。
+詳細ドキュメントは `docs\` 配下に整理しています。
 
-### 前提条件 (Prerequisites)
+- 運用手順: `docs\operations-guide.md`
+- 構成リファレンス: `docs\configuration-reference.md`
+- ドキュメント一覧: `docs\README.md`
 
-コマンドを実行する端末に、以下のツールがインストールされ、パスが通っている必要があります。
+## 採用している主要コンポーネント
 
-- **Kubernetes Cluster**: 接続可能なクラスターがあること
-- **kubectl**: クラスターへのアクセスが設定されていること (`~/.kube/config` 等)
-- **Helm**: ArgoCD のインストールに使用します
-- **Git**: リポジトリの取得に使用します
+- Kubernetes: `k3s`
+- GitOps: `ArgoCD`
+- Secret 管理: `External Secrets Operator`
+  - 初期 backend: `Infisical`
+  - 将来移行先: `GCP Secret Manager`
+- Service Mesh / Trace: `Istio` + `OpenTelemetry Collector` + `Tempo`
+- Metrics: `VictoriaMetrics`
+- Logs: `Loki` + `Fluent Bit`
+- Visualization: `Grafana`
+- Public exposure: `Cloudflare Tunnel`
 
-### 実行方法 (Usage)
+## リポジトリ構成
 
-1. リポジトリをクローンし、ディレクトリに移動します。
-
-    ```bash
-    git clone [https://github.com/uttne/home-garage.git](https://github.com/uttne/home-garage.git)
-    cd home-garage
-    ```
-
-2. bootstrap スクリプトに実行権限を付与し、実行します。
-
-    ```bash
-    chmod +x bootstrap/setup.sh
-    ./bootstrap/setup.sh
-    ```
-
-## 実行される処理 (What happens)
-
-スクリプトを実行すると、自動的に以下の処理が行われます。
-
-1. ArgoCD のインストール
-   - argocd 名前空間を作成し、Helm を使用して公式チャートから ArgoCD をインストールします。
-2. 待機
-   - ArgoCD サーバーが正常に起動するまで待機します。
-3. Root App (App of Apps) の適用
-   - bootstrap/root-app.yaml を適用します。
-   - これにより、ArgoCD がこのリポジトリの system/ ディレクトリの監視を開始し、今後追加されるツール群が自動的に同期（デプロイ）されるようになります。
-4. パスワードの出力
-   - 最後に、ArgoCD の初期管理者パスワード（admin ユーザー用）をデコードしてターミナルに表示します。
+```text
+bootstrap\   静的 manifest など bootstrap 補助ファイル
+clusters\    cluster ごとの root 構成と overlay
+platform\    共通プラットフォーム層
+apps\        家庭内アプリケーション層
+docs\        運用手順と構成リファレンス
+src\         共通の Node.js + TypeScript CLI
+system\      旧構成（移行元として保持）
+manifests\   旧アプリ manifest（移行元として保持）
+```

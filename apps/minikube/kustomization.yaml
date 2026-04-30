@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+  - ../postgres
+  - ../n8n
+patches:
+  - target:
+      group: external-secrets.io
+      version: v1
+      kind: ExternalSecret
+      name: n8n-secret
+      namespace: n8n
+    patch: |-
+      - op: add
+        path: /spec/data/0/remoteRef/property
+        value: N8N_ENCRYPTION_KEY
+  - target:
+      group: external-secrets.io
+      version: v1
+      kind: ExternalSecret
+      name: postgres-secret
+      namespace: n8n
+    patch: |-
+      - op: add
+        path: /spec/data/0/remoteRef/property
+        value: POSTGRES_USER
+      - op: add
+        path: /spec/data/1/remoteRef/property
+        value: POSTGRES_PASSWORD
+      - op: add
+        path: /spec/data/2/remoteRef/property
+        value: POSTGRES_NON_ROOT_USER
+      - op: add
+        path: /spec/data/3/remoteRef/property
+        value: POSTGRES_NON_ROOT_PASSWORD

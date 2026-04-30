@@ -1,16 +1,18 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-app
+  name: platform-networking
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/uttne/home-garage.git
+    repoURL: REPO_URL_PLACEHOLDER
     targetRevision: HEAD
-    path: clusters/home
+    path: platform/networking
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -18,5 +20,3 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true

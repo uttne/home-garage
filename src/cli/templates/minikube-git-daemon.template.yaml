@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{name}}
+  namespace: {{namespace}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{name}}
+  template:
+    metadata:
+      labels:
+        app: {{name}}
+    spec:
+      containers:
+        - name: git-daemon
+          image: alpine:3.20
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apk add --no-cache git git-daemon >/dev/null
+              mkdir -p /srv/git
+              while [ ! -f /srv/git/home-garage/HEAD ]; do
+                echo "waiting for repo copy"
+                sleep 2
+              done
+              exec git daemon --reuseaddr --listen=0.0.0.0 --export-all --base-path=/srv/git /srv/git
+          ports:
+            - containerPort: 9418
+              name: git
+          volumeMounts:
+            - name: repo-volume
+              mountPath: /srv/git
+      volumes:
+        - name: repo-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{name}}
+  namespace: {{namespace}}
+spec:
+  selector:
+    app: {{name}}
+  ports:
+    - name: git
+      port: 9418
+      targetPort: 9418
+      protocol: TCP

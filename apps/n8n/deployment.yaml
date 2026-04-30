@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+  namespace: n8n
+  labels:
+    service: n8n
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: n8n
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        service: n8n
+      annotations:
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+        sidecar.istio.io/inject: "true"
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:18.1-alpine
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL..."
+              until pg_isready -h postgres-service.n8n.svc.cluster.local -p 5432 -U "$DB_USER"; do
+                echo "Waiting for database connection..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+        - name: volume-permissions
+          image: busybox:1.37.0
+          command:
+            - sh
+            - -c
+            - chown -R 1000:1000 /home/node/.n8n
+          volumeMounts:
+            - name: n8n-claim0
+              mountPath: /home/node/.n8n
+      containers:
+        - name: n8n
+          image: n8nio/n8n:2.4.6
+          command:
+            - /bin/sh
+          args:
+            - -c
+            - n8n start
+          env:
+            - name: DB_TYPE
+              value: postgresdb
+            - name: DB_POSTGRESDB_HOST
+              value: postgres-service.n8n.svc.cluster.local
+            - name: DB_POSTGRESDB_PORT
+              value: "5432"
+            - name: DB_POSTGRESDB_DATABASE
+              value: n8n
+            - name: DB_POSTGRESDB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_USER
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_PASSWORD
+            - name: N8N_PROTOCOL
+              value: http
+            - name: N8N_PORT
+              value: "5678"
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secret
+                  key: N8N_ENCRYPTION_KEY
+            - name: WEBHOOK_URL
+              value: http://my-home-n8n.local/
+            - name: N8N_HOST
+              value: my-home-n8n.local
+            - name: EXECUTIONS_DATA_PRUNE
+              value: "true"
+            - name: EXECUTIONS_DATA_MAX_AGE
+              value: "168"
+            - name: EXECUTIONS_DATA_PRUNE_MAX_COUNT
+              value: "50000"
+            - name: GENERIC_TIMEZONE
+              value: Asia/Tokyo
+            - name: TZ
+              value: Asia/Tokyo
+          ports:
+            - containerPort: 5678
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 1000m
+          volumeMounts:
+            - name: n8n-claim0
+              mountPath: /home/node/.n8n
+      restartPolicy: Always
+      volumes:
+        - name: n8n-claim0
+          persistentVolumeClaim:
+            claimName: n8n-claim0

@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: cluster-repo-settings
+    literals:
+      - repoURL=git://home-garage-git.argocd.svc.cluster.local/home-garage
+replacements:
+  - source:
+      kind: ConfigMap
+      name: cluster-repo-settings
+      fieldPath: data.repoURL
+    targets:
+      - select:
+          kind: Application
+        fieldPaths:
+          - spec.source.repoURL
+patches:
+  - target:
+      kind: Application
+      name: platform-core
+    patch: |-
+      - op: replace
+        path: /spec/source/path
+        value: platform/core/minikube
+  - target:
+      kind: Application
+      name: apps
+    patch: |-
+      - op: replace
+        path: /spec/source/path
+        value: apps/minikube

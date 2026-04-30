@@ -1,9 +1,17 @@
 {
   "packageManager": "pnpm@10.28.1",
   "devDependencies": {
-    "repomix": "^1.11.1"
+    "@types/node": "^24.5.2",
+    "repomix": "^1.11.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   },
   "scripts": {
+    "home-garage": "tsx src/cli/home-garage.ts",
+    "typecheck": "tsc --noEmit",
     "repomix": "repomix"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.8"
   }
 }

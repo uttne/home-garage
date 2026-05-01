@@ -20,6 +20,29 @@ tasks:
         helm upgrade --install victoriametrics victoriametrics/victoria-metrics-single
         --namespace monitoring --create-namespace
         -f apps/victoriametrics/values.yaml
+  deploy-grafana:
+    desc: "可視化ツールをデプロイ"
+    cmds:
+      - helm repo add grafana https://grafana.github.io/helm-charts
+      - helm repo update
+      - >
+        helm upgrade --install grafana grafana/grafana
+        --namespace monitoring --create-namespace
+        -f apps/grafana/values.yaml
   deploy-all:
     desc: "監視システムをデプロイ"
-    deps: [deploy-node-exporter, deploy-monitoring]
+    deps: [deploy-node-exporter, deploy-monitoring, deploy-grafana]
+
+  delete-grafana:
+    desc: "可視化ツールを削除する"
+    cmds:
+      - helm delete grafana --namespace monitoring
+      - kubectl delete pvc grafana --namespace monitoring
+  delete-monitoring:
+    desc: "監視システムを削除する"
+    cmds:
+      # すでに削除されている場合でもデータ削除処理を動作させるために || true をつけている
+      - helm uninstall victoriametrics --namespace monitoring || true
+      - >
+        kubectl delete pvc -l app.kubernetes.io/instance=victoriametrics
+        --namespace monitoring --ignore-not-found

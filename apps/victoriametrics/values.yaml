@@ -18,6 +18,16 @@ server:
           kubernetes_sd_configs:
             - role: endpoints
           relabel_configs:
+            # Node Exporterのサービスだけを対象にする設定
             - source_labels: [__meta_kubernetes_service_name]
               action: keep
               regex: .*node-exporter.*
+            # メタデータからノード名を抽出して instanceラベルを上書きする(デフォルトだと instanceラベルが IP アドレスとなるため)
+            - source_labels: [__meta_kubernetes_endpoint_node_name]
+              action: replace
+              target_label: instance
+            # 念のため host という名前のラベルにも同じノード名を入れておく
+            - source_labels: [__meta_kubernetes_endpoint_node_name]
+              action: replace
+              target_label: host
+            

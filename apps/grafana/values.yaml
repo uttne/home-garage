@@ -1,0 +1,52 @@
+# 初期パスワードなのでログイン後すぐに変更する
+adminPassword: "27aa8aad"
+
+nodeSelector:
+  node-role.kubernetes.io/monitoring: "true"
+
+# k8s に存在するダッシュボードの ConfigMap を探索しダッシュボードして追加するサイドカー
+sidecar:
+  dashboards:
+    enabled: true
+    # すべての Namespace からダッシュボードの ConfigMap を探す
+    searchNamespace: ALL
+    label: grafana_dashboard
+    labelValue: "1"
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: 'default'         # ダッシュボードの名前
+        orgId: 1                # 所属する組織ID (通常は1で固定)
+        folder: ''              # Grafana上のどのフォルダに表示するか
+        type: file              # どこから読み込むか(これはファイルから読み込む指定)
+        disableDeletion: false  # 画面上からダッシュボードを削除できるか(false=削除可能)
+        editable: true          # 画面上からダッシュボードを編集できるか(true=編集可能)
+        options:
+          path: /var/lib/grafana/dashboards/default   # ファイルを読みに行くフォルダの場所(このフォルダのすべてのファイルを読み込む指定)
+
+service:
+  type: LoadBalancer
+  port: 3000
+
+persistence:
+  enabled: true
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: VictoriaMetrics
+        type: prometheus
+        url: http://victoriametrics-victoria-metrics-single-server.monitoring.svc.cluster.local:8428
+        access: proxy
+        isDefault: true
+
+# 初期化でインストールするデフォルトのダッシュボード
+dashboards:
+  default:  # フォルダ名になる /var/lib/grafana/dashboards/default
+    node-exporter-full:   # ファイル名になる /var/lib/grafana/dashboards/default/node-exporter-full.json
+      gnetId: 1860 # 世界中で使われている超有名ダッシュボード
+      revision: 33
+      datasource: VictoriaMetrics

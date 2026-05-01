@@ -1,0 +1,3 @@
+server:
+  nodeSelector:
+    node-role.kubernetes.io/monitoring: "true"

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  deploy-monitoring:
+    desc: "観測のためのシステムをデプロイする"
+    cmds:
+      - helm repo add victoriametrics https://victoriametrics.github.io/helm-charts/
+      - helm repo update
+      - >
+        helm upgrade --install victoriametrics victoriametrics/victoria-metrics-single
+        --namespace monitoring --create-namespace
+        -f apps/victoriametrics/values.yaml

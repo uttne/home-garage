@@ -2,6 +2,8 @@
 
 version: '3'
 
+dotenv: ['.env']
+
 vars:
   SECRET_DIR: .secrets
   SECRET_FILE: client_config.json
@@ -37,6 +39,25 @@ tasks:
         kubectl create secret generic {{.SECRET_NAME}}
         --from-file={{.SECRET_FILE}}={{.SECRET_DIR}}/{{.SECRET_FILE}}
         --namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -
+  # ---------------------------------------------------------
+  # ESO の ClusterSecretStore の適用
+  deploy-eso-store:
+    desc: "External Secrets OperatorのClusterSecretStoreを適用します"
+    deps: [install-eso]
+    cmds:
+      - >
+        helm upgrade --install eso-store ./charts/eso-store
+        --namespace "${GCP_WIF_SERVICE_ACCOUNT_NAMESPACE}"
+        --create-namespace
+        --set projectID="${GCP_PROJECT_ID}"
+        --set audience="${GCP_WIF_AUDIENCE}"
+        --set serviceAccountName="${GCP_WIF_SERVICE_ACCOUNT_NAME}"
+        --set serviceAccountNamespace="${GCP_WIF_SERVICE_ACCOUNT_NAMESPACE}"
+  delete-eso-store:
+    desc: "External Secrets OperatorのClusterSecretStoreを削除します"
+    cmds:
+      - helm uninstall eso-store --namespace external-secrets
+  # ---------------------------------------------------------
   deploy-node-exporter:
     desc: "すべてのノードにメトリクスを取得するセンサーを配置"
     cmds:

@@ -101,3 +101,44 @@ tasks:
       - >
         kubectl delete pvc -l app.kubernetes.io/instance=victoriametrics
         --namespace monitoring --ignore-not-found
+
+  sync-secrets:
+    desc: ".env.gcp の内容を GCP Secret Manager に一括登録・更新する"
+    cmds:
+      - |
+        # .env.gcp ファイルが存在するかチェック
+        if [ ! -f .env.gcp ]; then
+          echo "エラー: .env.gcp が見つかりません"
+          exit 1
+        fi
+
+        echo "Secret Manager への同期を開始します..."
+
+        while IFS='=' read -r key value || [ -n "$key" ]; do
+          [[ -z "$key" || "$key" == \#* ]] && continue
+
+          value="${value%$'\r'}" # Windowsの改行コードを削除
+
+          value="${value%\"}" # 末尾のダブルクオーテーションを削除
+          value="${value%\'}" # 末尾のシングルクオーテーションを削除
+          value="${value#\"}" # 先頭のダブルクオーテーションを削除
+          value="${value#\'}" # 先頭のシングルクオーテーションを削除
+
+          if ! gcloud secrets describe "$key" > /dev/null 2>&1; then
+            echo "$key が見つからないため、新規作成します"
+            
+            if gcloud secrets create "$key" --replication-policy="automatic" > /dev/null; then
+              echo "新規作成に成功しました"
+            else
+              echo "$key の作成に失敗したためスキップします"
+              continue
+            fi
+          fi
+
+          if printf "%s" "$value" | gcloud secrets versions add "$key" --data-file=- > /dev/null; then
+            echo "$key の更新に成功しました"
+          else
+            echo "$key の更新に失敗したためスキップします"
+          fi
+
+        done < .env.gcp

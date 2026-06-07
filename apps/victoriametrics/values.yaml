@@ -1,0 +1,33 @@
+server:
+  # ノード指定
+  nodeSelector:
+    node-role.kubernetes.io/monitoring: "true"
+  
+  # 外部公開設定
+  service:
+    type: LoadBalancer # TODO: セキュリティのため、将来的には ClusterIP に変更して内部だけで通信するようにする
+    clusterIP: "" # Victoriametrics のデフォルトの "None" を打ち消す
+  
+  scrape:
+    enabled: true
+    config:
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: 'node-exporter'
+          kubernetes_sd_configs:
+            - role: endpoints
+          relabel_configs:
+            # Node Exporterのサービスだけを対象にする設定
+            - source_labels: [__meta_kubernetes_service_name]
+              action: keep
+              regex: .*node-exporter.*
+            # メタデータからノード名を抽出して instanceラベルを上書きする(デフォルトだと instanceラベルが IP アドレスとなるため)
+            - source_labels: [__meta_kubernetes_endpoint_node_name]
+              action: replace
+              target_label: instance
+            # 念のため host という名前のラベルにも同じノード名を入れておく
+            - source_labels: [__meta_kubernetes_endpoint_node_name]
+              action: replace
+              target_label: host
+            

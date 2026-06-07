@@ -1,0 +1,4 @@
+projectID: "GCP_PROJECT_ID"
+audience: "GCP_WIF_AUDIENCE"
+serviceAccountName: "GCP_WIF_SERVICE_ACCOUNT_NAME"
+serviceAccountNamespace: "GCP_WIF_SERVICE_ACCOUNT_NAMESPACE"

@@ -1,0 +1,175 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  SECRET_DIR: .secrets
+  SECRET_FILE: client_config.json
+  # GCPの構成ファイルをk3sのSecretとして登録する際のSecret名(GCP Workload Identity Federation用)
+  SECRET_NAME: gcp-wif-config
+
+tasks:
+  # ---------------------------------------------------------
+  # ESO のインストール
+  # ---------------------------------------------------------
+  install-eso:
+    desc: "Helmを使ってExternal Secrets Operatorをインストールします"
+    cmds:
+      # Helmリポジトリの追加と更新
+      - helm repo add external-secrets https://charts.external-secrets.io
+      - helm repo update external-secrets
+      # ESOのインストール（upgrade --install にすることで何度でも安全に実行可能）
+      - >
+        helm upgrade --install external-secrets external-secrets/external-secrets
+        --namespace external-secrets --create-namespace --set installCRDs=true
+  # ---------------------------------------------------------
+  # GCP 構成ファイルの Secret 登録
+  # ---------------------------------------------------------
+  apply-gcp-secret:
+    desc: ".secretsフォルダ内の構成ファイルをk3sのSecretとして登録します"
+    deps: [install-eso]
+    preconditions:
+      - sh: test -f {{.SECRET_DIR}}/{{.SECRET_FILE}}
+        msg: "エラー: {{.SECRET_DIR}}/{{.SECRET_FILE}} が見つかりません。GCPからダウンロードしたファイルを配置してください。"
+    cmds:
+      # Secretの作成（dry-run と apply を組み合わせることで、既存のSecretがあれば上書き更新する冪等な動作になります）
+      - >
+        kubectl create secret generic {{.SECRET_NAME}}
+        --from-file={{.SECRET_FILE}}={{.SECRET_DIR}}/{{.SECRET_FILE}}
+        --namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -
+  # ---------------------------------------------------------
+  # ESO の ClusterSecretStore の適用
+  deploy-eso-store:
+    desc: "External Secrets OperatorのClusterSecretStoreを適用します"
+    deps: [install-eso]
+    cmds:
+      - >
+        helm upgrade --install eso-store ./charts/eso-store
+        --namespace "${GCP_WIF_SERVICE_ACCOUNT_NAMESPACE}"
+        --create-namespace
+        --set projectID="${GCP_PROJECT_ID}"
+        --set audience="${GCP_WIF_AUDIENCE}"
+        --set serviceAccountName="${GCP_WIF_SERVICE_ACCOUNT_NAME}"
+        --set serviceAccountNamespace="${GCP_WIF_SERVICE_ACCOUNT_NAMESPACE}"
+  delete-eso-store:
+    desc: "External Secrets OperatorのClusterSecretStoreを削除します"
+    cmds:
+      - helm uninstall eso-store --namespace external-secrets
+  # ---------------------------------------------------------
+  deploy-node-exporter:
+    desc: "すべてのノードにメトリクスを取得するセンサーを配置"
+    cmds:
+      - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+      - helm repo update
+      - >
+        helm upgrade --install prometheus-node-exporter prometheus-community/prometheus-node-exporter
+        --namespace monitoring --create-namespace
+  deploy-monitoring:
+    desc: "観測のためのシステムをデプロイする"
+    cmds:
+      - helm repo add victoriametrics https://victoriametrics.github.io/helm-charts/
+      - helm repo update
+      - >
+        helm upgrade --install victoriametrics victoriametrics/victoria-metrics-single
+        --namespace monitoring --create-namespace
+        -f apps/victoriametrics/values.yaml
+  deploy-grafana:
+    desc: "可視化ツールをデプロイ"
+    cmds:
+      - helm repo add grafana https://grafana.github.io/helm-charts
+      - helm repo update
+      - >
+        helm upgrade --install grafana grafana/grafana
+        --namespace monitoring --create-namespace
+        -f apps/grafana/values.yaml
+  deploy-all:
+    desc: "監視システムをデプロイ"
+    deps: [deploy-node-exporter, deploy-monitoring, deploy-grafana]
+
+  delete-grafana:
+    desc: "可視化ツールを削除する"
+    cmds:
+      - helm delete grafana --namespace monitoring
+      - kubectl delete pvc grafana --namespace monitoring
+  delete-monitoring:
+    desc: "監視システムを削除する"
+    cmds:
+      # すでに削除されている場合でもデータ削除処理を動作させるために || true をつけている
+      - helm uninstall victoriametrics --namespace monitoring || true
+      - >
+        kubectl delete pvc -l app.kubernetes.io/instance=victoriametrics
+        --namespace monitoring --ignore-not-found
+
+  sync-secrets:
+    desc: ".env.gcp の内容を GCP Secret Manager に一括登録・更新する"
+    cmds:
+      - |
+        # .env.gcp ファイルが存在するかチェック
+        if [ ! -f .env.gcp ]; then
+          echo "エラー: .env.gcp が見つかりません"
+          exit 1
+        fi
+
+        echo "Secret Manager への同期を開始します..."
+
+        while IFS='=' read -r key value || [ -n "$key" ]; do
+          [[ -z "$key" || "$key" == \#* ]] && continue
+
+          value="${value%$'\r'}" # Windowsの改行コードを削除
+
+          value="${value%\"}" # 末尾のダブルクオーテーションを削除
+          value="${value%\'}" # 末尾のシングルクオーテーションを削除
+          value="${value#\"}" # 先頭のダブルクオーテーションを削除
+          value="${value#\'}" # 先頭のシングルクオーテーションを削除
+
+          if ! gcloud secrets describe "$key" > /dev/null 2>&1; then
+            echo "$key が見つからないため、新規作成します"
+            
+            if gcloud secrets create "$key" --replication-policy="automatic" > /dev/null; then
+              echo "新規作成に成功しました"
+            else
+              echo "$key の作成に失敗したためスキップします"
+              continue
+            fi
+          fi
+
+          if printf "%s" "$value" | gcloud secrets versions add "$key" --data-file=- > /dev/null; then
+            echo "$key の更新に成功しました"
+          else
+            echo "$key の更新に失敗したためスキップします"
+          fi
+
+        done < .env.gcp
+  deploy-db:
+    desc: "DBをデプロイする"
+    deps: [deploy-eso-store]
+    cmds:
+      - >
+        helm upgrade --install common-db oci://registry-1.docker.io/bitnamicharts/postgresql
+        --version 18.6.8
+        --namespace storage --create-namespace
+        -f apps/storage/common-db/values.yaml
+  deploy-myhome-tools:
+    desc: "myhome-toolsをデプロイする"
+    deps: [deploy-db]
+    preconditions:
+      - sh: test -n "${MYHOME_DOMAIN}"
+        msg: "エラー: .env に MYHOME_DOMAIN を設定してください。例: MYHOME_DOMAIN=local"
+    cmds:
+      - kubectl create namespace myhome --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl apply -f apps/myhome-tools/externalsecret.yaml
+      - >
+        helm upgrade --install myhome-tools oci://ghcr.io/uttne/charts/myhome-tools
+        --version 0.1.0
+        --namespace myhome --create-namespace
+        -f apps/myhome-tools/values.yaml
+        --set-string backend.env.FRONTEND_ORIGIN="http://myhome-tools.${MYHOME_DOMAIN}"
+        --set-string ingress.host="myhome-tools.${MYHOME_DOMAIN}"
+  delete-myhome-tools:
+    desc: "myhome-toolsを削除する"
+    cmds:
+      # namespace は他のリソースが使う可能性があるため削除しない。
+      - helm uninstall myhome-tools --namespace myhome || true
+      - kubectl delete -f apps/myhome-tools/externalsecret.yaml --ignore-not-found

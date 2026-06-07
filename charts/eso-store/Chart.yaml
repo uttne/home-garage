@@ -1,0 +1,4 @@
+apiVersion: v2
+name: eso-store
+description: A helm chart for External Secrets Operator ClusterSecretStore
+version: 0.1.0

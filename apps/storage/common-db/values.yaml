@@ -1,0 +1,117 @@
+# 家用クラスタではまず単一Podで運用し、必要になるまでレプリケーション構成にしない。
+architecture: standalone
+
+auth:
+  # postgres管理者ユーザーも有効にして、障害対応や手動メンテナンスに使えるようにする。
+  enablePostgresUser: true
+  # アプリケーションから通常利用するための共通ユーザーと初期DB。
+  username: app
+  database: app
+  # パスワードはGitに置かず、ESOが作成するKubernetes Secretを参照する。
+  existingSecret: common-db-postgresql-auth
+  # Secret内のキー名は用途が分かる名前にして、今後キーを増やしても意味を追いやすくする。
+  secretKeys:
+    adminPasswordKey: postgres-admin-password
+    userPasswordKey: app-user-password
+
+primary:
+  # local-pathなどのローカルディスク系StorageClassでは、DB Podが動いたnodeにPVが作られる。
+  # データの置き場所を予測しやすくするため、DB Podをストレージ用nodeへ寄せる。
+  # 事前に対象nodeへ `kubectl label node <node-name> node-role.kubernetes.io/storage=true` を付ける。
+  nodeSelector:
+    node-role.kubernetes.io/storage: "true"
+  # helm uninstallやStatefulSet削除後もDBデータ用PVCを残す。
+  persistentVolumeClaimRetentionPolicy:
+    enabled: true
+    whenScaled: Retain
+    whenDeleted: Retain
+  persistence:
+    # DBの実データはPodではなくPVC/PVに保存する。
+    enabled: true
+    # 家用の共通DBとして最初は小さめに確保し、必要に応じて拡張する。
+    size: 10Gi
+  # ほかのホームサーバー用途を圧迫しないよう、最低限の保証と上限を明示する。
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+metrics:
+  # まずはDB本体を安定させるため無効化。監視が必要になったら有効化する。
+  enabled: false
+
+# Bitnami PostgreSQL chartのリリースにあわせて、ESOのExternalSecretも同時に作る。
+extraDeploy:
+  - apiVersion: external-secrets.io/v1
+    kind: ExternalSecret
+    metadata:
+      name: common-db-postgresql-auth
+      namespace: storage
+    spec:
+      # Secret Manager側の変更を定期的にKubernetes Secretへ反映する。
+      refreshInterval: 1h
+      # charts/eso-storeで作成したGCP Secret Manager向けのClusterSecretStoreを使う。
+      secretStoreRef:
+        kind: ClusterSecretStore
+        name: gcp-secret-store
+      target:
+        # PostgreSQL chartがauth.existingSecretで参照するSecret名。
+        name: common-db-postgresql-auth
+        # このExternalSecretが作ったSecretとして管理し、不要なSecretの残留を避ける。
+        creationPolicy: Owner
+      data:
+        # GCP Secret Managerの値を、PostgreSQL chartが読むSecretキーに対応させる。
+        - secretKey: postgres-admin-password
+          remoteRef:
+            key: COMMON_DB_POSTGRES_PASSWORD
+        - secretKey: app-user-password
+          remoteRef:
+            key: COMMON_DB_APP_PASSWORD
+  # myhome-tools 用のDBを common-db 上に作る。既に存在する場合は何もしない。
+  # initdb script は初回起動時しか動かないため、helm upgradeでも再実行できるJobにしている。
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: common-db-create-myhome-tools-db
+      namespace: storage
+      annotations:
+        "helm.sh/hook": post-install,post-upgrade
+        "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    spec:
+      backoffLimit: 3
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: create-db
+              image: registry-1.docker.io/bitnami/postgresql:latest
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: common-db-postgresql-auth
+                      key: postgres-admin-password
+              command:
+                - /bin/bash
+                - -ec
+              args:
+                - |
+                  until pg_isready --host=common-db-postgresql.storage.svc.cluster.local --port=5432 --username=postgres; do
+                    sleep 5
+                  done
+
+                  psql \
+                    --host=common-db-postgresql.storage.svc.cluster.local \
+                    --port=5432 \
+                    --username=postgres \
+                    --dbname=postgres \
+                    --set=ON_ERROR_STOP=1 <<'SQL'
+                  SELECT format('CREATE DATABASE %I OWNER %I', 'myhome_tools', 'app')
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM pg_database WHERE datname = 'myhome_tools'
+                  )\gexec
+                  SQL

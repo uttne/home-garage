@@ -142,6 +142,18 @@ tasks:
           fi
 
         done < .env.gcp
+  deploy-cloudflare-tunnel:
+    desc: "Cloudflare Tunnel のクラスタ共通プロキシをデプロイする"
+    deps: [deploy-eso-store]
+    cmds:
+      - kubectl create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl apply -f apps/cloudflare-tunnel/externalsecret.yaml
+      - kubectl apply -f apps/cloudflare-tunnel/deployment.yaml
+  delete-cloudflare-tunnel:
+    desc: "Cloudflare Tunnel のクラスタ共通プロキシを削除する"
+    cmds:
+      - kubectl delete -f apps/cloudflare-tunnel/deployment.yaml --ignore-not-found
+      - kubectl delete -f apps/cloudflare-tunnel/externalsecret.yaml --ignore-not-found
   deploy-db:
     desc: "DBをデプロイする"
     deps: [deploy-eso-store]
@@ -158,6 +170,7 @@ tasks:
       - sh: test -n "${MYHOME_DOMAIN}"
         msg: "エラー: .env に MYHOME_DOMAIN を設定してください。例: MYHOME_DOMAIN=local"
     cmds:
+      - task: deploy-cloudflare-tunnel
       - kubectl create namespace myhome --dry-run=client -o yaml | kubectl apply -f -
       - kubectl apply -f apps/myhome-tools/externalsecret.yaml
       - >
@@ -165,8 +178,19 @@ tasks:
         --version 0.1.0
         --namespace myhome --create-namespace
         -f apps/myhome-tools/values.yaml
-        --set-string backend.env.FRONTEND_ORIGIN="http://myhome-tools.${MYHOME_DOMAIN}"
+        --set-string backend.env.FRONTEND_ORIGIN="https://myhome-tools.${MYHOME_DOMAIN}"
+        --set-string backend.env.SECURE_COOKIES="true"
         --set-string ingress.host="myhome-tools.${MYHOME_DOMAIN}"
+  migrate-myhome-tools-db:
+    desc: "myhome-tools の DB マイグレーションを実行する"
+    cmds:
+      - >
+        kubectl wait --namespace myhome
+        --for=condition=available deployment/myhome-tools-backend
+        --timeout=120s
+      - >
+        kubectl exec --namespace myhome deploy/myhome-tools-backend
+        -- alembic upgrade head
   delete-myhome-tools:
     desc: "myhome-toolsを削除する"
     cmds:

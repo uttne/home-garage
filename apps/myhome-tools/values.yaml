@@ -1,0 +1,55 @@
+# frontend/backend のイメージは private GHCR にあるため、ESOで作る pull secret を使う。
+imagePullSecrets:
+  - name: ghcr-pull-secret
+
+# Chart は 0.1.0 に固定し、アプリイメージは GHCR に存在するタグへ合わせる。
+frontend:
+  image:
+    tag: latest
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+backend:
+  image:
+    tag: latest
+  env:
+    APP_NAME: myhome-tools
+    # deploy-myhome-tools では MYHOME_DOMAIN を使って http://myhome-tools.${MYHOME_DOMAIN} に上書きする。
+    FRONTEND_ORIGIN: http://myhome-tools.local
+    JWT_ALGORITHM: HS256
+    ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+    AUTH_COOKIE_NAME: myhome_access_token
+    # ローカルHTTPで使い始められるよう false。HTTPS 化したら true に変更する。
+    SECURE_COOKIES: "false"
+    ALLOWED_CLOUDFLARE_EMAILS: ""
+  secretEnv:
+    databaseUrl:
+      # apps/myhome-tools/externalsecret.yaml が作成する Secret を参照する。
+      secretName: myhome-tools-secret
+      secretKey: DATABASE_URL
+    jwtSecretKey:
+      secretName: myhome-tools-secret
+      secretKey: JWT_SECRET_KEY
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  className: traefik
+  # deploy-myhome-tools では MYHOME_DOMAIN を使って myhome-tools.${MYHOME_DOMAIN} に上書きする。
+  host: myhome-tools.local
+  tls: []
+
+migration:
+  # DB作成は common-db 側で行う。アプリ側の Alembic migration は必要になったら有効化する。
+  enabled: false

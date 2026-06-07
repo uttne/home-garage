@@ -70,3 +70,48 @@ extraDeploy:
         - secretKey: app-user-password
           remoteRef:
             key: COMMON_DB_APP_PASSWORD
+  # myhome-tools 用のDBを common-db 上に作る。既に存在する場合は何もしない。
+  # initdb script は初回起動時しか動かないため、helm upgradeでも再実行できるJobにしている。
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: common-db-create-myhome-tools-db
+      namespace: storage
+      annotations:
+        "helm.sh/hook": post-install,post-upgrade
+        "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    spec:
+      backoffLimit: 3
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: create-db
+              image: registry-1.docker.io/bitnami/postgresql:latest
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: common-db-postgresql-auth
+                      key: postgres-admin-password
+              command:
+                - /bin/bash
+                - -ec
+              args:
+                - |
+                  until pg_isready --host=common-db-postgresql.storage.svc.cluster.local --port=5432 --username=postgres; do
+                    sleep 5
+                  done
+
+                  psql \
+                    --host=common-db-postgresql.storage.svc.cluster.local \
+                    --port=5432 \
+                    --username=postgres \
+                    --dbname=postgres \
+                    --set=ON_ERROR_STOP=1 <<'SQL'
+                  SELECT format('CREATE DATABASE %I OWNER %I', 'myhome_tools', 'app')
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM pg_database WHERE datname = 'myhome_tools'
+                  )\gexec
+                  SQL

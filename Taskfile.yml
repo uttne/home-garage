@@ -151,3 +151,25 @@ tasks:
         --version 18.6.8
         --namespace storage --create-namespace
         -f apps/storage/common-db/values.yaml
+  deploy-myhome-tools:
+    desc: "myhome-toolsをデプロイする"
+    deps: [deploy-db]
+    preconditions:
+      - sh: test -n "${MYHOME_DOMAIN}"
+        msg: "エラー: .env に MYHOME_DOMAIN を設定してください。例: MYHOME_DOMAIN=local"
+    cmds:
+      - kubectl create namespace myhome --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl apply -f apps/myhome-tools/externalsecret.yaml
+      - >
+        helm upgrade --install myhome-tools oci://ghcr.io/uttne/charts/myhome-tools
+        --version 0.1.0
+        --namespace myhome --create-namespace
+        -f apps/myhome-tools/values.yaml
+        --set-string backend.env.FRONTEND_ORIGIN="http://myhome-tools.${MYHOME_DOMAIN}"
+        --set-string ingress.host="myhome-tools.${MYHOME_DOMAIN}"
+  delete-myhome-tools:
+    desc: "myhome-toolsを削除する"
+    cmds:
+      # namespace は他のリソースが使う可能性があるため削除しない。
+      - helm uninstall myhome-tools --namespace myhome || true
+      - kubectl delete -f apps/myhome-tools/externalsecret.yaml --ignore-not-found

@@ -9,6 +9,8 @@ vars:
   SECRET_FILE: client_config.json
   # GCPの構成ファイルをk3sのSecretとして登録する際のSecret名(GCP Workload Identity Federation用)
   SECRET_NAME: gcp-wif-config
+  MYHOME_TOOLS_CHART_VERSION: 0.1.1
+  MYHOME_TOOLS_HELM_ARGS: ""
 
 tasks:
   # ---------------------------------------------------------
@@ -175,12 +177,31 @@ tasks:
       - kubectl apply -f apps/myhome-tools/externalsecret.yaml
       - >
         helm upgrade --install myhome-tools oci://ghcr.io/uttne/charts/myhome-tools
-        --version 0.1.0
+        --version {{.MYHOME_TOOLS_CHART_VERSION}}
         --namespace myhome --create-namespace
         -f apps/myhome-tools/values.yaml
         --set-string backend.env.FRONTEND_ORIGIN="https://myhome-tools.${MYHOME_DOMAIN}"
+        --set-string backend.env.EXTERNAL_LOGOUT_URL="https://myhome-tools.${MYHOME_DOMAIN}/cdn-cgi/access/logout?returnTo=https://myhome-tools.${MYHOME_DOMAIN}"
         --set-string backend.env.SECURE_COOKIES="true"
         --set-string ingress.host="myhome-tools.${MYHOME_DOMAIN}"
+        {{.MYHOME_TOOLS_HELM_ARGS}}
+  refresh-myhome-tools:
+    desc: "更新した Chart バージョンで myhome-tools を再デプロイし、Pod を再作成する"
+    cmds:
+      - task: deploy-myhome-tools
+        vars:
+          MYHOME_TOOLS_HELM_ARGS: >-
+            --set-string frontend.image.pullPolicy=Always
+            --set-string backend.image.pullPolicy=Always
+      - >
+        kubectl rollout restart deployment
+        --namespace myhome
+        --selector=app.kubernetes.io/instance=myhome-tools
+      - >
+        kubectl rollout status deployment
+        --namespace myhome
+        --selector=app.kubernetes.io/instance=myhome-tools
+        --timeout=120s
   migrate-myhome-tools-db:
     desc: "myhome-tools の DB マイグレーションを実行する"
     cmds:
